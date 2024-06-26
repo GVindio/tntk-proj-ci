@@ -9,18 +9,18 @@ on:
 
 env:
   ENVIRONMENT: ${{ github.ref_name }}
-  ACCOUNT_ID: ${{ env.ACCOUNT_ID }}
-  AWS_REGION: ${{ env.AWS_REGION }}
-  BASE_DOMAIN: ${{ env.BASE_DOMAIN }}
-  APPLICATION_NAME: ${{ env.APPLICATION_NAME }}
-  APPLICATION_NAMESPACE: ${{ env.APPLICATION_NAMESPACE }}
-  CD_DESTINATION_OWNER: ${{ env.CD_DESTINATION_OWNER }}
-  CD_PROJECT: ${{ env.CD_PROJECT }}
+  ACCOUNT_ID: ${{ secrets.ACCOUNT_ID }}  # Assuming this is set as a secret
+  AWS_REGION: us-east-1  # Directly setting the region here
+  BASE_DOMAIN: tntkproject.kloudtokloudshop.com
+  APPLICATION_NAME: demoapp
+  APPLICATION_NAMESPACE: application
+  CD_DESTINATION_OWNER: GVindio
+  CD_PROJECT: tntk-proj-cd
 
 jobs:
   get_inputs:
     runs-on: ubuntu-latest
-    environment: tntk-proj  # Assuming the environment is named 'tntk-proj'
+    environment: tntk-proj
     outputs:
       sqs_arn: ${{ steps.aws_resources.outputs.sqs_arn }}
       sha8: ${{ steps.slug.outputs.sha8 }}
@@ -31,8 +31,8 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-region: ${{ env.AWS_REGION }}
-          role-to-assume: arn:aws:iam::${{ env.ACCOUNT_ID }}:role/GitHubActionsRole
-          role-duration-seconds: 1200  # Optional: defaults to 1 hour
+          role-to-assume: arn:aws:iam::${{ secrets.ACCOUNT_ID }}:role/GitHubActionsRole
+          role-duration-seconds: 1200
           role-session-name: GitHubActionsSession
       - name: Install AWS CLI
         uses: unfor19/install-aws-cli-action@v1
@@ -47,13 +47,12 @@ jobs:
     outputs:
       registry: ${{ steps.login-ecr.outputs.registry }}
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
       - name: Configure AWS credentials again for ECR
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-region: ${{ env.AWS_REGION }}
-          role-to-assume: arn:aws:iam::${{ env.ACCOUNT_ID }}:role/GitHubActionsRole
+          role-to-assume: arn:aws:iam::${{ secrets.ACCOUNT_ID }}:role/GitHubActionsRole
           role-duration-seconds: 1200
           role-session-name: GitHubActionsSession
       - name: Login to Amazon ECR
@@ -66,6 +65,22 @@ jobs:
         run: |
           docker build -f .devops/docker/$COMPONENT_NAME.dockerfile -t $REGISTRY/$ENVIRONMENT/$COMPONENT_NAME:$SHA8 src/$COMPONENT_NAME/
           docker push $REGISTRY/$ENVIRONMENT/$COMPONENT_NAME:$SHA8
+      - name: Build and push UI image to ECR
+        env:
+          SHA8: ${{ needs.get_inputs.outputs.sha8 }}
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          COMPONENT_NAME: "ui"
+        run: |
+          docker build -f .devops/docker/$COMPONENT_NAME.dockerfile -t $REGISTRY/$ENVIRONMENT/$COMPONENT_NAME:$SHA8 src/$COMPONENT_NAME/
+          docker push $REGISTRY/$ENVIRONMENT/$COMPONENT_NAME:$SHA8
+      - name: Build and push Lambda image to ECR
+        env:
+          SHA8: ${{ needs.get_inputs.outputs.sha8 }}
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          COMPONENT_NAME: "lambda"
+        run: |
+          docker build -f .devops/docker/$COMPONENT_NAME.dockerfile -t $REGISTRY/$ENVIRONMENT/$COMPONENT_NAME:$SHA8 src/api/
+          docker push $REGISTRY/$ENVIRONMENT/$COMPONENT_NAME:$SHA8
 
   k8s_manifest_storing:
     runs-on: ubuntu-latest
@@ -74,8 +89,7 @@ jobs:
     container:
       image: alpine/helm:latest
     steps:
-      - name: Check out
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
       - name: Deploy to Kubernetes
         run: |
           helm template $APPLICATION_NAME .devops/helm/demoapp -f .devops/helm/demoapp/values.yaml  --create-namespace -n $APPLICATION_NAMESPACE --output-dir manifest \
