@@ -108,10 +108,10 @@ jobs:
 
       - name: Debug Helm Command
         run: |
-          echo "Helm chart path: ./devops/helm/demoapp"
+          echo "Helm chart path: .devops/helm/demoapp"
           echo "Output directory: ./manifest"
-          ls -al ./devops/helm
-          ls -al ./devops/helm/demoapp
+          ls -al .devops/helm
+          ls -al .devops/helm/demoapp
           ls -al ./manifest
 
       - name: Deploy to Kubernetes
@@ -120,7 +120,7 @@ jobs:
           SHA8: ${{ needs.get_inputs.outputs.sha8 }}
           SQS_ARN: ${{ needs.get_inputs.outputs.sqs_arn }}
         run: |
-          helm template $APPLICATION_NAME ./devops/helm/demoapp -f ./devops/helm/demoapp/values.yaml --create-namespace -n $APPLICATION_NAMESPACE > ./manifest/output.yaml
+          helm template $APPLICATION_NAME .devops/helm/demoapp -f .devops/helm/demoapp/values.yaml --create-namespace -n $APPLICATION_NAMESPACE > ./manifest/output.yaml
           mkdir -p ./manifest
           mv ./manifest/output.yaml ./manifest/
 
