@@ -15,7 +15,7 @@ env:
   AWS_REGION: ${{ vars.AWS_REGION }}
   BASE_DOMAIN: ${{ vars.BASE_DOMAIN }}
   APPLICATION_NAME: ${{ vars.APPLICATION_NAME }}
-  APPLICATION_NAMESPACE: production  # Example: Set to the desired namespace
+  APPLICATION_NAMESPACE: ${{ vars.APPLICATION_NAMESPACE }}
   CD_DESTINATION_OWNER: ${{ vars.CD_DESTINATION_OWNER }}
   CD_PROJECT: ${{ vars.CD_PROJECT }}
 
@@ -125,20 +125,18 @@ jobs:
           REGISTRY: ${{ needs.build_images_and_push.outputs.registry }}
           SHA8: ${{ needs.get_inputs.outputs.sha8 }}
           SQS_ARN: ${{ needs.get_inputs.outputs.sqs_arn }}
-          APPLICATION_NAMESPACE: ${{ env.APPLICATION_NAMESPACE }}
         run: |
-          echo "APPLICATION_NAMESPACE: $APPLICATION_NAMESPACE"
           helm template $APPLICATION_NAME .devops/helm/demoapp -f .devops/helm/demoapp/values.yaml --create-namespace -n $APPLICATION_NAMESPACE > ./manifest/output.yaml
           mv ./manifest/output.yaml ./manifest/
 
-      - name: Pushes to another repository
+      - name: Push to Another Repository
         uses: cpina/github-action-push-to-another-repository@main
-        env:
-          API_TOKEN_GITHUB: ${{ secrets.API_TOKEN_GITHUB }}
-          CD_DESTINATION: ${{ secrets.API_TOKEN_GITHUB }}
         with:
           source-directory: "./manifest"
           target-directory: "demoapp"
           destination-github-username: ${{ env.CD_DESTINATION_OWNER }}
           destination-repository-name: ${{ env.CD_PROJECT }}
           target-branch: "prod"
+          commit-message: "Update from ORIGIN_COMMIT"
+        env:
+          API_TOKEN_GITHUB: ${{ secrets.API_TOKEN_GITHUB }}
