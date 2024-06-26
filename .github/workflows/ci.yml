@@ -12,9 +12,10 @@ on:
 env:
   ENVIRONMENT: ${{ github.ref_name }}
   ACCOUNT_ID: ${{ vars.ACCOUNT_ID }}
+  AWS_REGION: ${{ vars.AWS_REGION }}
   BASE_DOMAIN: ${{ vars.BASE_DOMAIN }}
   APPLICATION_NAME: ${{ vars.APPLICATION_NAME }}
-  APPLICATION_NAMESPACE: ${{ vars.APPLICATION_NAMESPACE }}
+  APPLICATION_NAMESPACE: production  # Example: Set to the desired namespace
   CD_DESTINATION_OWNER: ${{ vars.CD_DESTINATION_OWNER }}
   CD_PROJECT: ${{ vars.CD_PROJECT }}
 
@@ -106,6 +107,11 @@ jobs:
       - name: Create Manifest Directory
         run: mkdir -p ./manifest
 
+      - name: Debug Environment Variables
+        run: |
+          echo "APPLICATION_NAME: $APPLICATION_NAME"
+          echo "APPLICATION_NAMESPACE: $APPLICATION_NAMESPACE"
+
       - name: Debug Helm Command
         run: |
           echo "Helm chart path: .devops/helm/demoapp"
@@ -119,9 +125,10 @@ jobs:
           REGISTRY: ${{ needs.build_images_and_push.outputs.registry }}
           SHA8: ${{ needs.get_inputs.outputs.sha8 }}
           SQS_ARN: ${{ needs.get_inputs.outputs.sqs_arn }}
+          APPLICATION_NAMESPACE: ${{ env.APPLICATION_NAMESPACE }}
         run: |
+          echo "APPLICATION_NAMESPACE: $APPLICATION_NAMESPACE"
           helm template $APPLICATION_NAME .devops/helm/demoapp -f .devops/helm/demoapp/values.yaml --create-namespace -n $APPLICATION_NAMESPACE > ./manifest/output.yaml
-          mkdir -p ./manifest
           mv ./manifest/output.yaml ./manifest/
 
       - name: Pushes to another repository
