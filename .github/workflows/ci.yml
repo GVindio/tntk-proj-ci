@@ -16,9 +16,9 @@ env:
   BASE_DOMAIN: ${{ vars.BASE_DOMAIN }}
   APPLICATION_NAME: ${{ vars.APPLICATION_NAME }}
   APPLICATION_NAMESPACE: "default"
-  REGISTRY: "139675813056.dkr.ecr.us-east-1.amazonaws.com" # Hardcoded value
-  CD_DESTINATION_OWNER: "GVindio"  # Hardcoded value
-  CD_PROJECT: "tntk-proj-cd"  # Hardcoded value
+  REGISTRY: "139675813056.dkr.ecr.us-east-1.amazonaws.com"
+  CD_DESTINATION_OWNER: "GVindio"
+  CD_PROJECT: "tntk-proj-cd"
 
 jobs:
   get_inputs:
@@ -135,8 +135,8 @@ jobs:
         with:
           source-directory: "./manifest"
           target-directory: "demoapp"
-          destination-github-username: "GVindio"  # Hardcoded value
-          destination-repository-name: "tntk-proj-cd"  # Hardcoded value
+          destination-github-username: "GVindio"
+          destination-repository-name: "tntk-proj-cd"
           target-branch: "prod"
           commit-message: "Update from ORIGIN_COMMIT"
         env:
