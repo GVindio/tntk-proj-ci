@@ -16,8 +16,9 @@ env:
   BASE_DOMAIN: ${{ vars.BASE_DOMAIN }}
   APPLICATION_NAME: ${{ vars.APPLICATION_NAME }}
   APPLICATION_NAMESPACE: "default"
-  CD_DESTINATION_OWNER: ${{ vars.CD_DESTINATION_OWNER }}
-  CD_PROJECT: ${{ vars.CD_PROJECT }}
+  REGISTRY: "139675813056.dkr.ecr.us-east-1.amazonaws.com" # Hardcoded value
+  CD_DESTINATION_OWNER: "GVindio"  # Hardcoded value
+  CD_PROJECT: "tntk-proj-cd"  # Hardcoded value
 
 jobs:
   get_inputs:
@@ -71,7 +72,7 @@ jobs:
       - name: Build API image and push to ECR
         env:
           SHA8: ${{ needs.get_inputs.outputs.sha8 }}
-          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          REGISTRY: ${{ env.REGISTRY }}
           COMPONENT_NAME: "api"
         run: |
           docker build -f .devops/docker/$COMPONENT_NAME.dockerfile -t $REGISTRY/$ENVIRONMENT/$COMPONENT_NAME:$SHA8 src/$COMPONENT_NAME/
@@ -80,7 +81,7 @@ jobs:
       - name: Build UI image and push to ECR
         env:
           SHA8: ${{ needs.get_inputs.outputs.sha8 }}
-          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          REGISTRY: ${{ env.REGISTRY }}
           COMPONENT_NAME: "ui"
         run: |
           docker build -f .devops/docker/$COMPONENT_NAME.dockerfile -t $REGISTRY/$ENVIRONMENT/$COMPONENT_NAME:$SHA8 src/$COMPONENT_NAME/
@@ -89,7 +90,7 @@ jobs:
       - name: Build Lambda image and push to ECR
         env:
           SHA8: ${{ needs.get_inputs.outputs.sha8 }}
-          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          REGISTRY: ${{ env.REGISTRY }}
           COMPONENT_NAME: "lambda"
         run: |
           docker build -f .devops/docker/$COMPONENT_NAME.dockerfile -t $REGISTRY/$ENVIRONMENT/$COMPONENT_NAME:$SHA8 src/api/
@@ -122,7 +123,7 @@ jobs:
 
       - name: Deploy to Kubernetes
         env:
-          REGISTRY: ${{ needs.build_images_and_push.outputs.registry }}
+          REGISTRY: ${{ env.REGISTRY }}
           SHA8: ${{ needs.get_inputs.outputs.sha8 }}
           SQS_ARN: ${{ needs.get_inputs.outputs.sqs_arn }}
         run: |
@@ -134,8 +135,8 @@ jobs:
         with:
           source-directory: "./manifest"
           target-directory: "demoapp"
-          destination-github-username: ${{ env.CD_DESTINATION_OWNER }}
-          destination-repository-name: ${{ env.CD_PROJECT }}
+          destination-github-username: "GVindio"  # Hardcoded value
+          destination-repository-name: "tntk-proj-cd"  # Hardcoded value
           target-branch: "prod"
           commit-message: "Update from ORIGIN_COMMIT"
         env:
