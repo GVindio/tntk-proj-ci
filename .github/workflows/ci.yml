@@ -103,13 +103,22 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v2
 
+      - name: Create Manifest Directory
+        run: mkdir -p ./manifest
+
+      - name: Debug Helm Command
+        run: |
+          echo "Helm chart path: ./devops/helm/demoapp"
+          echo "Output directory: ./manifest"
+          ls -al ./devops/helm/demoapp
+          ls -al ./manifest
+
       - name: Deploy to Kubernetes
         env:
           REGISTRY: ${{ needs.build_images_and_push.outputs.registry }}
           SHA8: ${{ needs.get_inputs.outputs.sha8 }}
           SQS_ARN: ${{ needs.get_inputs.outputs.sqs_arn }}
         run: |
-          rm -rf ./manifest
           helm template $APPLICATION_NAME ./devops/helm/demoapp -f ./devops/helm/demoapp/values.yaml --create-namespace -n $APPLICATION_NAMESPACE --output-dir ./manifest \
             --set api.image.repository=$REGISTRY/$ENVIRONMENT/api \
             --set api.image.tag=$SHA8 \
