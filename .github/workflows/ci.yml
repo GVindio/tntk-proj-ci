@@ -15,7 +15,7 @@ env:
   AWS_REGION: ${{ vars.AWS_REGION }}
   BASE_DOMAIN: ${{ vars.BASE_DOMAIN }}
   APPLICATION_NAME: ${{ vars.APPLICATION_NAME }}
-  APPLICATION_NAMESPACE: ${{ vars.APPLICATION_NAMESPACE }}
+  APPLICATION_NAMESPACE: production  # Example: Set to the desired namespace
   CD_DESTINATION_OWNER: ${{ vars.CD_DESTINATION_OWNER }}
   CD_PROJECT: ${{ vars.CD_PROJECT }}
 
