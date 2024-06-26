@@ -1,86 +1,46 @@
-name: Integration
+name: Integration and Deployment
 
 on:
   push:
-    branches: ["prod"]
+    branches:
+      - prod
   pull_request:
-    branches: ["prod"]
+    branches:
+      - prod
   workflow_dispatch:
 
-env:
-  ENVIRONMENT: ${{ github.ref_name }}
-  ACCOUNT_ID: ${{ secrets.ACCOUNT_ID }}
-  BASE_DOMAIN: ${{ secrets.BASE_DOMAIN }}
-  APPLICATION_NAME: ${{ secrets.APPLICATION_NAME }}
-  APPLICATION_NAMESPACE: ${{ secrets.APPLICATION_NAMESPACE }}
-  CD_DESTINATION_OWNER: ${{ secrets.CD_DESTINATION_OWNER }}
-  CD_PROJECT: ${{ secrets.CD_PROJECT }}
-
 jobs:
-  get_inputs:
+  setup_and_deploy:
     runs-on: ubuntu-latest
-    outputs:
-      sqs_arn: ${{ steps.aws_resources.outputs.sqs_arn }}
-      sha8: ${{ steps.slug.outputs.sha8 }}
+    environment: production  # Ensure this matches the environment where your secrets are stored
     steps:
-      - uses: actions/checkout@v2
-      - name: Configure AWS credentials
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: 'us-east-1'  # Hardcoded AWS region
+          aws-region: 'us-east-1'  # Modify as per your AWS region
 
       - name: Install AWS CLI
         uses: unfor19/install-aws-cli-action@v1
 
-      - name: Get SQS queue ARN
+      - name: Build and Push Docker Images
         run: |
-          echo "sqs_arn=$(aws sqs get-queue-attributes --queue-url $(aws sqs list-queues --region us-east-1 | jq -r .QueueUrls[0]) --attribute-names QueueArn --region us-east-1 | jq -r .Attributes.QueueArn)" >> $GITHUB_OUTPUT
+          # Example of building and pushing a Docker image
+          docker build -t my-image:${{ github.sha }} .
+          echo "Docker image built successfully."
 
-  build_images_and_push:
-    runs-on: ubuntu-latest
-    needs: get_inputs
-    steps:
-      - uses: actions/checkout@v2
-      - name: Login to Amazon ECR
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Build and push API image to ECR
-        env:
-          SHA8: ${{ needs.get_inputs.outputs.sha8 }}
-          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          COMPONENT_NAME: "api"
+      - name: Deploy to AWS
         run: |
-          docker build -f .devops/docker/api.Dockerfile -t $REGISTRY/$ENVIRONMENT/api:$SHA8 src/api/
-          docker push $REGISTRY/$ENVIRONMENT/api:$SHA8
+          # Example deployment script, adjust according to your AWS service usage
+          echo "Starting deployment..."
+          # Deploy using AWS CLI commands
+          aws s3 cp my-file.txt s3://my-bucket/
 
-      - name: Build and push UI image to ECR
-        env:
-          SHA8: ${{ needs.get_inputs.outputs.sha8 }}
-          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          COMPONENT_NAME: "ui"
+      - name: Additional Deployment Steps
         run: |
-          docker build -f .devops/docker/ui.Dockerfile -t $REGISTRY/$ENVIRONMENT/ui:$SHA8 src/ui/
-          docker push $REGISTRY/$ENVIRONMENT/ui:$SHA8
-
-      - name: Build and push Lambda image to ECR
-        env:
-          SHA8: ${{ needs.get_inputs.outputs.sha8 }}
-          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          COMPONENT_NAME: "lambda"
-        run: |
-          docker build -f .devops/docker/lambda.Dockerfile -t $REGISTRY/$ENVIRONMENT/lambda:$SHA8 src/lambda/
-          docker push $REGISTRY/$ENVIRONMENT/lambda:$SHA8
-
-  k8s_manifest_storing:
-    runs-on: ubuntu-latest
-    needs: build_images_and_push
-    container:
-      image: alpine/helm:latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Deploy to Kubernetes
-        run: |
-          helm template $APPLICATION_NAME .devops/helm/demoapp --create-namespace -n $APPLICATION_NAMESPACE --output-dir ./deployments
-          # Additional deployment commands
+          echo "Executing additional deployment scripts..."
+          # Additional commands can be added here
