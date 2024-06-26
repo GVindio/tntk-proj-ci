@@ -1,22 +1,69 @@
+name: Python Application Workflow
+
+on:
+  workflow_dispatch:  # Allows manual triggering via GitHub Actions tab
+  push:
+    branches: [ "prod" ]  # Triggers on pushes to the prod branch
+  pull_request:
+    branches: [ "prod" ]  # Triggers on pull requests to the prod branch
+
+env:
+  ENVIRONMENT: ${{ github.ref_name }}
+  ACCOUNT_ID: ${{ secrets.ACCOUNT_ID }}
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  BASE_DOMAIN: ${{ secrets.BASE_DOMAIN }}
+  APPLICATION_NAME: ${{ secrets.APPLICATION_NAME }}
+  APPLICATION_NAMESPACE: ${{ secrets.APPLICATION_NAMESPACE }}
+  CD_DESTINATION_OWNER: ${{ secrets.CD_DESTINATION_OWNER }}
+  CD_PROJECT: ${{ secrets.CD_PROJECT }}
+
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted  # Specifies to run on your self-hosted runner
     steps:
-    - name: Check out repository
-      uses: actions/checkout@v2
+      - name: Check out repository
+        uses: actions/checkout@v2
 
-    - name: Set up Python
-      uses: actions/setup-python@v2
-      with:
-        python-version: '3.8'
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.8'  # Ensure this matches your project requirements
 
-    - name: Upgrade pip
-      run: python -m pip install --upgrade pip
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
 
-    - name: Install dependencies
-      run: |
-        pip install -r requirements.txt  # Make sure this path is correct
+      - name: Install dependencies
+        run: pip install -r requirements.txt  # Assumes requirements.txt is in the root of your repository
 
-    - name: Run a simple script
-      run: |
-        python my_script.py  # Adjust this line as necessary
+      - name: Run a simple script
+        run: python my_script.py  # Replace 'my_script.py' with your actual script path
+
+  deploy:
+    needs: build
+    runs-on: self-hosted
+    steps:
+      - name: Deploy to Kubernetes
+        run: |
+          helm upgrade --install ${{ env.APPLICATION_NAME }} ./helm/${{ env.APPLICATION_NAME }} \
+            --namespace ${{ env.APPLICATION_NAMESPACE }} \
+            --create-namespace \
+            --set image.repository=${{ env.REGISTRY }}/${{ env.ENVIRONMENT }}/${{ env.APPLICATION_NAME }} \
+            --set image.tag=${{ needs.build.outputs.sha8 }}
+
+      - name: Notify deployment success
+        run: echo "Deployment successful!"
+
+  update-repo:
+    needs: deploy
+    runs-on: self-hosted
+    steps:
+      - name: Push changes to another repository
+        uses: cpina/github-action-push-to-another-repository@main
+        env:
+          API_TOKEN_GITHUB: ${{ secrets.API_TOKEN_GITHUB }}
+        with:
+          source-directory: 'manifest'
+          destination-github-username: ${{ env.CD_DESTINATION_OWNER }}
+          destination-repository-name: ${{ env.CD_PROJECT }}
+          target-branch: ${{ env.ENVIRONMENT }}
+
