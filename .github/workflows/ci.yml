@@ -7,10 +7,20 @@ on:
     branches: ["prod"]
   workflow_dispatch:
 
+env:
+  ENVIRONMENT: ${{ github.ref_name }}
+  ACCOUNT_ID: ${{ env.ACCOUNT_ID }}
+  AWS_REGION: ${{ env.AWS_REGION }}
+  BASE_DOMAIN: ${{ env.BASE_DOMAIN }}
+  APPLICATION_NAME: ${{ env.APPLICATION_NAME }}
+  APPLICATION_NAMESPACE: ${{ env.APPLICATION_NAMESPACE }}
+  CD_DESTINATION_OWNER: ${{ env.CD_DESTINATION_OWNER }}
+  CD_PROJECT: ${{ env.CD_PROJECT }}
+
 jobs:
   get_inputs:
     runs-on: ubuntu-latest
-    environment: tntk-proj  # Name of the environment as defined in GitHub Actions settings
+    environment: tntk-proj  # Assuming the environment is named 'tntk-proj'
     outputs:
       sqs_arn: ${{ steps.aws_resources.outputs.sqs_arn }}
       sha8: ${{ steps.slug.outputs.sha8 }}
@@ -20,15 +30,15 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}  # Using the environment variable directly
-          mask-aws-account-id: "false"
-      - name: Install AWS cli
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: arn:aws:iam::${{ env.ACCOUNT_ID }}:role/GitHubActionsRole
+          role-duration-seconds: 1200  # Optional: defaults to 1 hour
+          role-session-name: GitHubActionsSession
+      - name: Install AWS CLI
         uses: unfor19/install-aws-cli-action@v1
-      - name: Get SQS queue arn
+      - name: Get SQS queue ARN
         run: |
-          echo "sqs_arn=$(aws sqs get-queue-attributes --queue-url $(aws sqs list-queues --region $AWS_REGION | jq -r .QueueUrls[0]) --attribute-names QueueArn --region $AWS_REGION | jq -r .Attributes.QueueArn)" >> $GITHUB_OUTPUT
+          echo "sqs_arn=$(aws sqs get-queue-attributes --queue-url $(aws sqs list-queues --region ${{ env.AWS_REGION }} | jq -r .QueueUrls[0]) --attribute-names QueueArn --region ${{ env.AWS_REGION }} | jq -r .Attributes.QueueArn)" >> $GITHUB_OUTPUT
 
   build_images_and_push:
     runs-on: ubuntu-latest
@@ -37,15 +47,15 @@ jobs:
     outputs:
       registry: ${{ steps.login-ecr.outputs.registry }}
     steps:
-      - name: Check out
+      - name: Check out repository
         uses: actions/checkout@v4
-      - name: Configure AWS credentials
+      - name: Configure AWS credentials again for ECR
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
-          mask-aws-account-id: "false"
+          role-to-assume: arn:aws:iam::${{ env.ACCOUNT_ID }}:role/GitHubActionsRole
+          role-duration-seconds: 1200
+          role-session-name: GitHubActionsSession
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
       - name: Build and push API image to ECR
@@ -56,3 +66,29 @@ jobs:
         run: |
           docker build -f .devops/docker/$COMPONENT_NAME.dockerfile -t $REGISTRY/$ENVIRONMENT/$COMPONENT_NAME:$SHA8 src/$COMPONENT_NAME/
           docker push $REGISTRY/$ENVIRONMENT/$COMPONENT_NAME:$SHA8
+
+  k8s_manifest_storing:
+    runs-on: ubuntu-latest
+    environment: tntk-proj
+    needs: [build_images_and_push, get_inputs]
+    container:
+      image: alpine/helm:latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+      - name: Deploy to Kubernetes
+        run: |
+          helm template $APPLICATION_NAME .devops/helm/demoapp -f .devops/helm/demoapp/values.yaml  --create-namespace -n $APPLICATION_NAMESPACE --output-dir manifest \
+            --set api.image.repository=$REGISTRY/$ENVIRONMENT/api \
+            --set api.image.tag=$SHA8 \
+            --set ui.image.repository=$REGISTRY/$ENVIRONMENT/ui \
+            --set ui.image.tag=$SHA8 \
+            --set ingress.ingress.hosts[0].host=$APPLICATION_NAME.$ENVIRONMENT.$BASE_DOMAIN \
+            --set api.configmapData.SSM_PREFIX=/$ENVIRONMENT \
+            --set api.configmapData.AWS_REGION=$AWS_REGION \
+            --set lambda.code.imageURI=$REGISTRY/$ENVIRONMENT/lambda:$SHA8 \
+            --set lambda.mapping.eventSourceARN=$SQS_ARN \
+            --set lambda.name=lambda \
+            --set lambda.env=$ENVIRONMENT \
+            --set lambda.account_id=$ACCOUNT_ID \
+            --set lambda.aws_region=$AWS_REGION
