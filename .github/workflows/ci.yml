@@ -7,10 +7,18 @@ on:
     branches: ["prod"]
   workflow_dispatch:
 
+env:
+  ENVIRONMENT: ${{ github.ref_name }}
+  ACCOUNT_ID: ${{ secrets.ACCOUNT_ID }}
+  BASE_DOMAIN: ${{ secrets.BASE_DOMAIN }}
+  APPLICATION_NAME: ${{ secrets.APPLICATION_NAME }}
+  APPLICATION_NAMESPACE: ${{ secrets.APPLICATION_NAMESPACE }}
+  CD_DESTINATION_OWNER: ${{ secrets.CD_DESTINATION_OWNER }}
+  CD_PROJECT: ${{ secrets.CD_PROJECT }}
+
 jobs:
   get_inputs:
     runs-on: ubuntu-latest
-    environment: production  # Assuming 'production' is the environment name where your variables are set
     outputs:
       sqs_arn: ${{ steps.aws_resources.outputs.sqs_arn }}
       sha8: ${{ steps.slug.outputs.sha8 }}
@@ -19,37 +27,60 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: 'us-east-1'  # Hardcoded AWS region
 
       - name: Install AWS CLI
         uses: unfor19/install-aws-cli-action@v1
 
       - name: Get SQS queue ARN
         run: |
-          echo "sqs_arn=$(aws sqs get-queue-attributes --queue-url $(aws sqs list-queues --region ${{ env.AWS_REGION }} | jq -r .QueueUrls[0]) --attribute-names QueueArn --region ${{ env.AWS_REGION }} | jq -r .Attributes.QueueArn)" >> $GITHUB_OUTPUT
+          echo "sqs_arn=$(aws sqs get-queue-attributes --queue-url $(aws sqs list-queues --region us-east-1 | jq -r .QueueUrls[0]) --attribute-names QueueArn --region us-east-1 | jq -r .Attributes.QueueArn)" >> $GITHUB_OUTPUT
 
   build_images_and_push:
     runs-on: ubuntu-latest
-    environment: production
     needs: get_inputs
     steps:
       - uses: actions/checkout@v2
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build and push Docker images
+      - name: Build and push API image to ECR
+        env:
+          SHA8: ${{ needs.get_inputs.outputs.sha8 }}
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          COMPONENT_NAME: "api"
         run: |
-          docker build -t $REGISTRY/$ENVIRONMENT/api:${{ github.sha }} -f .devops/docker/api.Dockerfile .
-          docker push $REGISTRY/$ENVIRONMENT/api:${{ github.sha }}
+          docker build -f .devops/docker/api.Dockerfile -t $REGISTRY/$ENVIRONMENT/api:$SHA8 src/api/
+          docker push $REGISTRY/$ENVIRONMENT/api:$SHA8
 
-  deploy:
+      - name: Build and push UI image to ECR
+        env:
+          SHA8: ${{ needs.get_inputs.outputs.sha8 }}
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          COMPONENT_NAME: "ui"
+        run: |
+          docker build -f .devops/docker/ui.Dockerfile -t $REGISTRY/$ENVIRONMENT/ui:$SHA8 src/ui/
+          docker push $REGISTRY/$ENVIRONMENT/ui:$SHA8
+
+      - name: Build and push Lambda image to ECR
+        env:
+          SHA8: ${{ needs.get_inputs.outputs.sha8 }}
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          COMPONENT_NAME: "lambda"
+        run: |
+          docker build -f .devops/docker/lambda.Dockerfile -t $REGISTRY/$ENVIRONMENT/lambda:$SHA8 src/lambda/
+          docker push $REGISTRY/$ENVIRONMENT/lambda:$SHA8
+
+  k8s_manifest_storing:
     runs-on: ubuntu-latest
-    environment: production
     needs: build_images_and_push
+    container:
+      image: alpine/helm:latest
     steps:
       - uses: actions/checkout@v2
       - name: Deploy to Kubernetes
         run: |
-          kubectl apply -f k8s/
+          helm template $APPLICATION_NAME .devops/helm/demoapp --create-namespace -n $APPLICATION_NAMESPACE --output-dir ./deployments
+          # Additional deployment commands
