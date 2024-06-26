@@ -141,4 +141,4 @@ jobs:
           target-directory: "demoapp"
           destination-github-username: ${{ env.CD_DESTINATION_OWNER }}
           destination-repository-name: ${{ env.CD_PROJECT }}
-          target-branch: ${{ env.ENVIRONMENT }}
+          target-branch: "prod"
