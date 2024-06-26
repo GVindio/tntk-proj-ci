@@ -2,9 +2,11 @@ name: Integration and Deployment
 
 on:
   push:
-    branches: ["prod"]
+    branches:
+      - prod
   pull_request:
-    branches: ["prod"]
+    branches:
+      - prod
   workflow_dispatch:
 
 env:
@@ -23,16 +25,23 @@ jobs:
       sqs_arn: ${{ steps.aws_resources.outputs.sqs_arn }}
       sha8: ${{ steps.slug.outputs.sha8 }}
     steps:
+      - name: Checkout Code
+        uses: actions/checkout@v2
+
       - name: Get short SHA
         id: slug
         run: echo "sha8=$(echo ${GITHUB_SHA} | cut -c1-8)" >> $GITHUB_OUTPUT
-      - name: Configure AWS credentials
+
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: 'us-east-1'
-          mask-aws-account-id: "false"
+
       - name: Install AWS CLI
         uses: unfor19/install-aws-cli-action@v1
+
       - name: Get SQS queue ARN
         id: aws_resources
         run: |
@@ -44,16 +53,20 @@ jobs:
     outputs:
       registry: ${{ steps.login-ecr.outputs.registry }}
     steps:
-      - name: Check out
-        uses: actions/checkout@v4
-      - name: Configure AWS credentials
+      - name: Checkout Code
+        uses: actions/checkout@v2
+
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: 'us-east-1'
-          mask-aws-account-id: "false"
+
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
+
       - name: Build API image and push to ECR
         env:
           SHA8: ${{ needs.get_inputs.outputs.sha8 }}
@@ -62,6 +75,7 @@ jobs:
         run: |
           docker build -f .devops/docker/$COMPONENT_NAME.dockerfile -t $REGISTRY/$ENVIRONMENT/$COMPONENT_NAME:$SHA8 src/$COMPONENT_NAME/
           docker push $REGISTRY/$ENVIRONMENT/$COMPONENT_NAME:$SHA8
+
       - name: Build UI image and push to ECR
         env:
           SHA8: ${{ needs.get_inputs.outputs.sha8 }}
@@ -70,7 +84,8 @@ jobs:
         run: |
           docker build -f .devops/docker/$COMPONENT_NAME.dockerfile -t $REGISTRY/$ENVIRONMENT/$COMPONENT_NAME:$SHA8 src/$COMPONENT_NAME/
           docker push $REGISTRY/$ENVIRONMENT/$COMPONENT_NAME:$SHA8
-      - name: Build lambda image and push to ECR
+
+      - name: Build Lambda image and push to ECR
         env:
           SHA8: ${{ needs.get_inputs.outputs.sha8 }}
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -85,8 +100,9 @@ jobs:
     container:
       image: alpine/helm:latest
     steps:
-      - name: Check out
-        uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v2
+
       - name: Deploy to Kubernetes
         env:
           REGISTRY: ${{ needs.build_images_and_push.outputs.registry }}
@@ -108,6 +124,7 @@ jobs:
             --set lambda.env=$ENVIRONMENT \
             --set lambda.account_id=$ACCOUNT_ID \
             --set lambda.aws_region=us-east-1
+
       - name: Pushes to another repository
         uses: cpina/github-action-push-to-another-repository@main
         env:
