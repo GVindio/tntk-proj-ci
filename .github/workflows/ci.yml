@@ -8,33 +8,48 @@ on:
   workflow_dispatch:
 
 jobs:
-  configure_aws:
+  get_inputs:
     runs-on: ubuntu-latest
-    environment: production  # Specify the environment where your variables are configured
+    environment: production  # Assuming 'production' is the environment name where your variables are set
+    outputs:
+      sqs_arn: ${{ steps.aws_resources.outputs.sqs_arn }}
+      sha8: ${{ steps.slug.outputs.sha8 }}
     steps:
+      - uses: actions/checkout@v2
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}  # Assuming this is stored as a secret
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}  # Assuming this is stored as a secret
-          aws-region: ${{ env.AWS_REGION }}  # Accessing environment variable correctly
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install AWS CLI
+        uses: unfor19/install-aws-cli-action@v1
+
+      - name: Get SQS queue ARN
+        run: |
+          echo "sqs_arn=$(aws sqs get-queue-attributes --queue-url $(aws sqs list-queues --region ${{ env.AWS_REGION }} | jq -r .QueueUrls[0]) --attribute-names QueueArn --region ${{ env.AWS_REGION }} | jq -r .Attributes.QueueArn)" >> $GITHUB_OUTPUT
 
   build_images_and_push:
     runs-on: ubuntu-latest
-    environment: production  # Specify the same environment to ensure consistency
+    environment: production
+    needs: get_inputs
     steps:
       - uses: actions/checkout@v2
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
       - name: Build and push Docker images
         run: |
-          echo "Building Docker images..."
-          # Additional Docker commands here
+          docker build -t $REGISTRY/$ENVIRONMENT/api:${{ github.sha }} -f .devops/docker/api.Dockerfile .
+          docker push $REGISTRY/$ENVIRONMENT/api:${{ github.sha }}
 
   deploy:
     runs-on: ubuntu-latest
     environment: production
+    needs: build_images_and_push
     steps:
       - uses: actions/checkout@v2
       - name: Deploy to Kubernetes
         run: |
-          echo "Deploying to Kubernetes..."
-          # Your Kubernetes deployment commands
+          kubectl apply -f k8s/
