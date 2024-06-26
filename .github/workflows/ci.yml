@@ -1,11 +1,11 @@
 name: Python Application Workflow
 
 on:
-  workflow_dispatch:  # Allows manual triggering via GitHub Actions tab
+  workflow_dispatch: # Allows you to run this workflow manually from the Actions tab
   push:
-    branches: [ "prod" ]  # Triggers on pushes to the prod branch
+    branches: [ "prod" ] # Triggers on pushes to the prod branch
   pull_request:
-    branches: [ "prod" ]  # Triggers on pull requests to the prod branch
+    branches: [ "prod" ] # Triggers on pull requests to the prod branch
 
 env:
   ENVIRONMENT: ${{ github.ref_name }}
@@ -19,7 +19,8 @@ env:
 
 jobs:
   build:
-    runs-on: self-hosted  # Specifies to run on your self-hosted runner
+    runs-on: ubuntu-latest  # Now using GitHub-hosted runner
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v2
@@ -27,7 +28,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v2
         with:
-          python-version: '3.8'  # Ensure this matches your project requirements
+          python-version: '3.8'
 
       - name: Upgrade pip
         run: python -m pip install --upgrade pip
@@ -40,7 +41,7 @@ jobs:
 
   deploy:
     needs: build
-    runs-on: self-hosted
+    runs-on: ubuntu-latest  # Each job must specify the runner type
     steps:
       - name: Deploy to Kubernetes
         run: |
@@ -55,7 +56,7 @@ jobs:
 
   update-repo:
     needs: deploy
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - name: Push changes to another repository
         uses: cpina/github-action-push-to-another-repository@main
@@ -66,4 +67,3 @@ jobs:
           destination-github-username: ${{ env.CD_DESTINATION_OWNER }}
           destination-repository-name: ${{ env.CD_PROJECT }}
           target-branch: ${{ env.ENVIRONMENT }}
-
